@@ -5,6 +5,7 @@ auth/vercel-auth.json
 .env
 .env.*
 !.env.example
+claude_desktop_config.json
 
 # Visual baseline screenshots (kept local, too large for git)
 tests/baseline-snapshots/
