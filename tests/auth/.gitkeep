@@ -1,0 +1,3 @@
+# Authentication state files
+# Run `npx playwright test --config=playwright.config.ts` to generate vercel-auth.json
+# This file will be created after the first successful authentication

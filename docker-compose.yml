@@ -1,0 +1,17 @@
+services:
+  dept-playwright-tests:
+    container_name: dept-playwright-tests
+    build:
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./tests:/app/tests
+      - ./tests/baseline-snapshots:/app/tests/baseline-snapshots
+      - ./tests/playwright-report:/app/playwright-report
+      - ./sitemap.json:/app/sitemap.json
+      - ./exclude-sitemap.json:/app/exclude-sitemap.json
+      - ./playwright.config.ts:/app/playwright.config.ts
+      - ./.env:/app/.env
+      - ./csv-reports:/app/csv-reports
+      - ./mappings:/app/mappings
+      - ./screenshot.css:/app/screenshot.css
+      - ./artifacts:/app/artifacts

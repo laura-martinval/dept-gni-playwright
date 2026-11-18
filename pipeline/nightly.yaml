@@ -1,0 +1,88 @@
+trigger:
+  batch: true
+
+schedules:
+  - cron: '0 0 * * *'  # This cron expression means "At 00:00 (midnight) every day"
+    displayName: Daily midnight build
+    branches:
+      include:
+        - develop
+    always: true  # This ensures the build runs even if there are no changes
+
+variables:
+  - group: aws-playwright
+
+jobs:
+- job: PlaywrightTests
+  displayName: Run Playwright Tests
+  pool:
+    vmImage: ubuntu-latest
+  container: mcr.microsoft.com/playwright:v1.49.1-jammy
+  strategy:
+    matrix:
+      maybourne:
+        project: chromium
+        site: maybourne
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: ''
+      riviera:
+        project: chromium
+        site: riviera
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: '/riviera'
+      emory:
+        project: chromium
+        site: emory
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: '/emory'
+      claridge:
+        project: chromium
+        site: claridge
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: '/claridge'
+      beverly:
+        project: chromium
+        site: beverly
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: '/beverly'
+      connaught:
+        project: chromium
+        site: connaught
+        domain: https://optid.maybournegroup.com
+        sitePrefixPath: '/connaught'
+  steps: 
+  - checkout: self
+    lfs: true
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18'
+    displayName: 'Install Node.js'
+  - script: yarn install
+    displayName: 'yarn install'
+  # - script: npx playwright install $(project) --with-deps
+  #   displayName: 'Install Playwright browsers'
+  
+  - script: yarn run visual-all --project=$(project)
+    displayName: 'Run Playwright Desktop Tests - $(site) $(project)'
+    env:
+      CI: 'true'
+      SITEMAP_ARRAY: '["$(domain)/en$(sitePrefixPath)/test-pages/RichTextBlock"]'
+      PLAYWRIGHT_JUNIT_INCLUDE_PROJECT_IN_TEST_NAME: true
+    condition: succeededOrFailed()
+  - task: PublishTestResults@2
+    displayName: 'Publish test results $(site) $(project)'
+    inputs:
+      searchFolder: 'test-results'
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'e2e-junit-*.xml'
+      mergeTestResults: true
+      failTaskOnFailedTests: true
+      testRunTitle: 'Screenshot Tests $(site) $(project)'
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: playwright-report
+      artifact: playwright-report-$(site)-$(project)
+      publishLocation: 'pipeline'
+    condition: succeededOrFailed()

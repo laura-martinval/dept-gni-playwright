@@ -1,0 +1,20 @@
+node_modules
+auth/vercel-auth.json
+
+# Local environment files (contain credentials)
+.env
+.env.*
+!.env.example
+
+# Visual baseline screenshots (kept local, too large for git)
+tests/baseline-snapshots/
+
+# Generated test output
+playwright-report/
+test-results/
+lh-report/
+artifacts/
+csv-reports/
+
+# macOS
+.DS_Store

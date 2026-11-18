@@ -1,0 +1,139 @@
+trigger:
+  batch: true
+
+schedules:
+  - cron: '0 0 * * *'  # This cron expression means "At 00:00 (midnight) every day"
+    displayName: Daily midnight build
+    branches:
+      include:
+        - develop
+    always: true  # This ensures the build runs even if there are no changes
+
+variables:
+  - group: aws-playwright
+
+jobs:
+- job: CleanS3
+  displayName: 'Clean S3 Directories'
+  pool:
+    vmImage: ubuntu-latest
+  strategy:
+    matrix:
+      maybourne:
+        project: chromium
+        site: maybourne
+      riviera:
+        project: chromium
+        site: riviera
+      emory:
+        project: chromium
+        site: emory
+      claridge:
+        project: chromium
+        site: claridge
+      beverly:
+        project: chromium
+        site: beverly
+      connaught:
+        project: chromium
+        site: connaught
+  steps:
+  - checkout: none
+  - script: |
+      aws s3 rm s3://playwright-results.deptlabs.uk/reports/$(site)-$(project)/ --recursive
+    displayName: 'Clean S3 Directories'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_DEFAULT_REGION: $(AWS_REGION)
+
+- job: PlaywrightTests
+  displayName: Run Playwright Tests
+  dependsOn: CleanS3
+  pool:
+    vmImage: ubuntu-latest
+  container: mcr.microsoft.com/playwright:v1.49.1-jammy
+  strategy:
+    matrix:
+      maybourne:
+        project: chromium
+        site: maybourne
+        domain: https://optid.maybournegroup.com/testsitemap.xml
+      # riviera:
+      #   project: chromium
+      #   site: riviera
+      #   domain: https://optid.maybournegroup.com/testrivierasitemap.xml
+      emory:
+        project: chromium
+        site: emory
+        domain: https://optid.maybournegroup.com/testemorysitemap.xml
+      claridge:
+        project: chromium
+        site: claridge
+        domain: https://optid.maybournegroup.com/testclaridgesitemap.xml
+      # beverly:
+      #   project: chromium
+      #   site: beverly
+      #   domain: https://optid.maybournegroup.com/testbeverlysitemap.xml
+      # connaught:
+      #   project: chromium
+      #   site: connaught
+      #   domain: https://optid.maybournegroup.com/testconnaughtsitemap.xml
+  steps: 
+  - checkout: self
+    lfs: true
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18'
+    displayName: 'Install Node.js'
+  - script: yarn install
+    displayName: 'yarn install'
+  # - script: npx playwright install $(project) --with-deps
+  #   displayName: 'Install Playwright browsers'
+  - script: yarn run sitemap --project=$(project)
+    displayName: 'Run Playwright Sitemap - $(site) $(project)'
+    env:
+      CI: 'true'
+      SITEMAP_URL: '$(domain)'
+      PLAYWRIGHT_JUNIT_INCLUDE_PROJECT_IN_TEST_NAME: true
+    condition: succeededOrFailed()
+  - script: yarn run visual-sitemap-desktop --project=$(project)
+    displayName: 'Run Playwright Desktop Tests - $(site) $(project)'
+    env:
+      CI: 'true'
+      SITEMAP_URL: '$(domain)'
+      PLAYWRIGHT_JUNIT_INCLUDE_PROJECT_IN_TEST_NAME: true
+    condition: succeededOrFailed()
+  - task: PublishTestResults@2
+    displayName: 'Publish test results $(site) $(project)'
+    inputs:
+      searchFolder: 'test-results'
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'e2e-junit-*.xml'
+      mergeTestResults: true
+      failTaskOnFailedTests: true
+      testRunTitle: 'Screenshot Tests $(site) $(project)'
+    condition: succeededOrFailed()
+
+  - task: S3Upload@1 
+    inputs:
+      awsCredentials: 'Playwright-S3'
+      regionName: 'eu-west-2'
+      bucketName: 'playwright-results.deptlabs.uk'
+      sourceFolder: 'playwright-report'
+      targetFolder: 'reports/$(site)-$(project)/'
+    displayName: 'Upload Published Results to S3'
+    condition: succeededOrFailed()
+
+  - script: |
+      echo "Upload completed 🚀 The files can be accessed at:"
+      echo "https://playwright-results.deptlabs.com/reports/$(site)-$(project)/"
+    displayName: 'See Results'
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: playwright-report
+      artifact: playwright-report-$(site)-$(project)
+      publishLocation: 'pipeline'
+    condition: succeededOrFailed()

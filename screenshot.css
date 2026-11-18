@@ -1,0 +1,8 @@
+/* screenshot.css */
+iframe {
+    visibility: hidden;
+  }
+
+  video {
+    visibility: hidden;
+}

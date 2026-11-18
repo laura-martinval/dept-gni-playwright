@@ -1,0 +1,143 @@
+trigger:
+  batch: true
+
+schedules:
+  - cron: '0 0 * * *'  # This cron expression means "At 00:00 (midnight) every day"
+    displayName: Daily midnight build
+    branches:
+      include:
+        - develop
+    always: true
+
+variables:
+  - group: aws-playwright
+
+jobs:
+- job: CleanS3
+  displayName: 'Clean S3 Directories'
+  pool:
+    vmImage: ubuntu-latest
+  steps:
+  - checkout: none
+  - script: |
+      aws s3 rm s3://playwright-results.deptlabs.uk/reports/maybourne-keychecks/ --recursive
+    displayName: 'Clean S3 Directories'
+    env:
+      AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+      AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+      AWS_DEFAULT_REGION: $(AWS_REGION)
+
+- job: PlaywrightTests
+  displayName: Run Playwright Tests
+  dependsOn: CleanS3
+  pool:
+    vmImage: ubuntu-latest
+  container: mcr.microsoft.com/playwright:v1.49.1-jammy
+  steps: 
+  - checkout: self
+    lfs: true
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '18'
+    displayName: 'Install Node.js'
+
+  - script: yarn install
+    displayName: 'yarn install'
+
+  - script: npx playwright install chromium
+    displayName: 'Install Playwright browsers'
+
+  - script: yarn run sitemap
+    displayName: 'Run Playwright sanity'
+    env:
+      CI: 'true'
+      SITEMAP_URL: 'https://optid.maybournegroup.com/testsitemap.xml'
+    condition: succeededOrFailed()
+
+  - script: yarn run sanity
+    displayName: 'Run Playwright sanity'
+    env:
+      CI: 'true'
+    condition: succeededOrFailed()
+
+  - task: PublishTestResults@2
+    displayName: 'Publish test results sanity'
+    inputs:
+      searchFolder: 'test-results'
+      testResultsFormat: 'JUnit'
+      testResultsFiles: 'e2e-junit-*.xml'
+      mergeTestResults: true
+      failTaskOnFailedTests: true
+      testRunTitle: 'Sanity tests'
+    condition: succeededOrFailed()
+
+  # - script: yarn run a11y-sitemap
+  #   displayName: 'Run Playwright a11y-sitemap'
+  #   env:
+  #     CI: 'true'
+  #   condition: succeededOrFailed()
+
+  # - task: PublishTestResults@2
+  #   displayName: 'Publish test results a11y-sitemap'
+  #   inputs:
+  #     searchFolder: 'test-results'
+  #     testResultsFormat: 'JUnit'
+  #     testResultsFiles: 'e2e-junit-*.xml'
+  #     mergeTestResults: true
+  #     failTaskOnFailedTests: true
+  #     testRunTitle: 'A11y-sitemap tests'
+  #   condition: succeededOrFailed()
+
+  # - script: npm add @unlighthouse/cli puppeteer
+  #   displayName: 'Install Unlighthouse CLI and Puppeteer'
+
+  # - script: |
+  #     # Find the Chromium executable path dynamically
+  #     CHROME_PATH=$(find /ms-playwright -name 'chromium-*' -type f | head -n 1)
+  #     echo "##vso[task.setvariable variable=CHROME_PATH]$CHROME_PATH"  # Set the environment variable for the next step
+  #     echo "Found CHROME_PATH: $CHROME_PATH"  # Debugging line to print the path
+  #     ls -l $CHROME_PATH  # List the details of the found executable to check permissions
+  #   displayName: 'Find Chromium Executable'
+
+  # - script: |
+  #     # Run the lh-ci command using the found CHROME_PATH
+  #     yarn run lh-ci --site https://optid.maybournegroup.com/
+  #   displayName: 'Run lh-ci'
+  #   env:
+  #     CI: 'true'
+  #     CHROME_PATH: $(CHROME_PATH)
+  #   condition: succeededOrFailed()
+
+  # - task: PublishTestResults@2
+  #   displayName: 'Publish test results lh-ci'
+  #   inputs:
+  #     searchFolder: 'test-results'
+  #     testResultsFormat: 'JUnit'
+  #     testResultsFiles: 'e2e-junit-*.xml'
+  #     mergeTestResults: true
+  #     failTaskOnFailedTests: true
+  #     testRunTitle: 'lh-ci tests'
+  #   condition: succeededOrFailed()
+
+  - task: S3Upload@1 
+    inputs:
+      awsCredentials: 'Playwright-S3'
+      regionName: 'eu-west-2'
+      bucketName: 'playwright-results.deptlabs.uk'
+      sourceFolder: 'playwright-report'
+      targetFolder: 'reports/maybourne-keychecks/'
+    displayName: 'Upload Published Results to S3'
+    condition: succeededOrFailed()
+
+  - script: |
+      echo "Upload completed 🚀 The files can be accessed at:"
+      echo "https://playwright-results.deptlabs.com/reports/maybourne-keychecks/"
+    displayName: 'See Results'
+    condition: succeededOrFailed()
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: playwright-report
+      artifact: playwright-report-$(site)-$(project)
+      publishLocation: 'pipeline'
+    condition: succeededOrFailed()
